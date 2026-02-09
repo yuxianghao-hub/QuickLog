@@ -1,5 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
 import "./styles.css";
 
 const TYPES = [
@@ -20,6 +22,7 @@ function App() {
   const [shortcutCapture, setShortcutCapture] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
   const [editorTitle, setEditorTitle] = useState("");
+  const [editorValue, setEditorValue] = useState("");
   const editorRef = React.useRef(null);
 
   const refresh = async () => {
@@ -97,6 +100,7 @@ function App() {
   const openEditor = (note) => {
     setEditingNote(note);
     setEditorTitle(deriveTitle(note));
+    setEditorValue(normalizeContentHtml(note.content || ""));
     setTimeout(() => {
       if (editorRef.current) editorRef.current.focus();
     }, 0);
@@ -105,30 +109,42 @@ function App() {
   const closeEditor = () => {
     setEditingNote(null);
     setEditorTitle("");
-  };
-
-  const execCmd = (cmd, value = null) => {
-    try {
-      document.execCommand(cmd, false, value);
-    } catch (err) {
-      // ignore
-    }
+    setEditorValue("");
   };
 
   const saveEditor = async () => {
     if (!editingNote) return;
     const title = editorTitle.trim();
-    const content = editorRef.current ? editorRef.current.innerHTML : "";
+    const content = editorValue || "";
     await window.api.updateNote({ id: editingNote.id, title, content });
     await refresh();
     await refreshStats();
     closeEditor();
   };
 
-  useEffect(() => {
-    if (!editingNote || !editorRef.current) return;
-    editorRef.current.innerHTML = normalizeContentHtml(editingNote.content || "");
-  }, [editingNote]);
+  const quillModules = {
+    toolbar: [
+      [{ header: [1, 2, 3, false] }],
+      ["bold", "italic", "underline", "strike"],
+      ["blockquote", "code-block"],
+      [{ list: "ordered" }, { list: "bullet" }],
+      [{ indent: "-1" }, { indent: "+1" }],
+      ["link", "clean"]
+    ]
+  };
+
+  const quillFormats = [
+    "header",
+    "bold",
+    "italic",
+    "underline",
+    "strike",
+    "blockquote",
+    "code-block",
+    "list",
+    "indent",
+    "link"
+  ];
 
   const todoRate = useMemo(() => {
     if (!stats) return "-";
@@ -327,32 +343,15 @@ function App() {
               </div>
             </div>
             <div className="editor-toolbar">
-              <button className="tool" onClick={() => execCmd("bold")}>B</button>
-              <button className="tool" onClick={() => execCmd("italic")}>I</button>
-              <button className="tool" onClick={() => execCmd("underline")}>U</button>
-              <button className="tool" onClick={() => execCmd("strikeThrough")}>S</button>
-              <span className="tool-sep" />
-              <button className="tool" onClick={() => execCmd("formatBlock", "h1")}>H1</button>
-              <button className="tool" onClick={() => execCmd("formatBlock", "h2")}>H2</button>
-              <button className="tool" onClick={() => execCmd("formatBlock", "blockquote")}>“</button>
-              <button className="tool" onClick={() => execCmd("insertUnorderedList")}>•</button>
-              <button className="tool" onClick={() => execCmd("insertOrderedList")}>1.</button>
-              <button
-                className="tool"
-                onClick={() => {
-                  const url = window.prompt("输入链接地址");
-                  if (url) execCmd("createLink", url);
-                }}
-              >
-                ↗
-              </button>
-              <button className="tool" onClick={() => execCmd("removeFormat")}>清除</button>
+              <ReactQuill
+                theme="snow"
+                value={editorValue}
+                onChange={setEditorValue}
+                modules={quillModules}
+                formats={quillFormats}
+                ref={editorRef}
+              />
             </div>
-            <div
-              className="editor-body"
-              contentEditable
-              ref={editorRef}
-            />
             <div className="editor-foot">双击卡片或点击“打开”进入编辑</div>
           </div>
         </div>
