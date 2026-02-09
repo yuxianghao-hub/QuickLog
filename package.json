@@ -1,55 +1,61 @@
 {
-    "name":  "quicklog",
-    "version":  "0.1.0",
-    "private":  true,
-    "main":  "app/main/main.js",
-    "scripts":  {
-                    "dev:renderer":  "vite --config app/renderer/vite.config.mjs",
-                    "dev:electron":  "wait-on tcp:5173 \u0026\u0026 cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron app/main/main.js",
-                    "dev":  "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
-                    "build:renderer":  "vite build --config app/renderer/vite.config.mjs",
-                    "build":  "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false npm run build:renderer \u0026\u0026 electron-builder",
-                    "lint":  "echo \u0027lint not configured\u0027",
-                    "postinstall":  "electron-builder install-app-deps",
-                    "gen:icon":  "node scripts/generate-icon.js"
-                },
-    "dependencies":  {
-                         "better-sqlite3":  "^11.5.0",
-                         "react":  "^18.2.0",
-                         "react-dom":  "^18.2.0"
-                     },
-    "devDependencies":  {
-                            "@vitejs/plugin-react":  "^4.2.1",
-                            "concurrently":  "^8.2.2",
-                            "cross-env":  "^7.0.3",
-                            "electron":  "^30.0.0",
-                            "electron-builder":  "^24.13.3",
-                            "wait-on":  "^7.0.1",
-                            "vite":  "^5.3.1",
-                            "electron-rebuild":  "^3.2.9",
-                            "png-to-ico":  "^2.1.0",
-                            "jimp":  "^0.22.10"
-                        },
-    "build":  {
-                  "appId":  "com.quicklog.app",
-                  "files":  [
-                                "app/**/*"
-                            ],
-                  "directories":  {
-                                      "buildResources":  "app/assets"
-                                  },
-                  "win":  {
-                              "icon":  "app/assets/app.ico",
-                              "target":  [
-                                             "portable"
-                                         ],
-                              "signAndEditExecutable":  false
-                          },
-                  "mac":  {
-                              "icon":  "app/assets/tray.png"
-                          },
-                  "linux":  {
-                                "icon":  "app/assets/tray.png"
-                            }
-              }
+  "name": "quicklog",
+  "version": "1.0.1",
+  "private": true,
+  "main": "app/main/main.js",
+  "scripts": {
+    "dev:renderer": "vite --config app/renderer/vite.config.mjs",
+    "dev:electron": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron app/main/main.js",
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "build:renderer": "vite build --config app/renderer/vite.config.mjs",
+    "build": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false npm run build:renderer && electron-builder",
+    "lint": "echo 'lint not configured'",
+    "postinstall": "electron-builder install-app-deps",
+    "gen:icon": "node scripts/generate-icon.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3",
+    "wait-on": "^7.0.1",
+    "vite": "^5.3.1",
+    "electron-rebuild": "^3.2.9",
+    "png-to-ico": "^2.1.0",
+    "jimp": "^0.22.10"
+  },
+  "build": {
+    "appId": "com.quicklog.app",
+    "files": [
+      "app/**/*"
+    ],
+    "directories": {
+      "buildResources": "app/assets"
+    },
+    "win": {
+      "icon": "app.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "icon": "app/assets/tray.png"
+    },
+    "linux": {
+      "icon": "app/assets/tray.png"
+    }
+  }
 }

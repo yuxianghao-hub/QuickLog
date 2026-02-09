@@ -13,9 +13,8 @@ async function main() {
   const img = await Jimp.read(src);
   const maxSide = Math.max(img.bitmap.width, img.bitmap.height);
   let base = img;
-  if (maxSide < 256) {
-    const scale = Math.ceil(256 / maxSide);
-    const size = maxSide * scale;
+  if (maxSide !== 256) {
+    const size = 256;
     base = img.clone().resize(size, size, Jimp.RESIZE_NEAREST_NEIGHBOR);
   }
 

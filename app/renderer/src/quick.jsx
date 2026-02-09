@@ -24,7 +24,21 @@ function QuickInput() {
 
   const submit = async () => {
     if (!content.trim()) return;
-    await window.api.addNote({ type, content: content.trim(), status: type === "worklog" ? "open" : null });
+    const text = content.trim();
+    const firstLine = text.split(/\r?\n/)[0].trim();
+    const title = firstLine || "（无标题）";
+    const escaped = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br/>");
+    const html = `<p>${escaped}</p>`;
+    await window.api.addNote({
+      type,
+      title,
+      content: html,
+      status: type === "worklog" ? "open" : null
+    });
     setContent("");
     await window.api.hideQuick();
   };

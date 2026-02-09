@@ -9,6 +9,20 @@ let tray;
 let db;
 let settings = { shortcut: "Alt+Q" };
 
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    ensureMainWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
 function initLogging() {
   try {
     const logDir = app.getPath("userData");
@@ -90,6 +104,7 @@ function ensureDb() {
     CREATE TABLE IF NOT EXISTS notes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       type TEXT NOT NULL,
+      title TEXT,
       content TEXT NOT NULL,
       tags TEXT,
       status TEXT,
@@ -99,6 +114,10 @@ function ensureDb() {
     CREATE INDEX IF NOT EXISTS idx_notes_type ON notes(type);
     CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at);
   `);
+  const columns = db.prepare("PRAGMA table_info(notes)").all().map((c) => c.name);
+  if (!columns.includes("title")) {
+    db.exec("ALTER TABLE notes ADD COLUMN title TEXT");
+  }
 }
 
 function createMainWindow() {
@@ -270,12 +289,15 @@ function createTray() {
 function setupIpc() {
   ipcMain.handle("note:add", (event, payload) => {
     const now = new Date().toISOString();
+    const title = (payload.title || "").trim();
+    const content = payload.content || "";
     const stmt = db.prepare(
-      "INSERT INTO notes (type, content, tags, status, created_at, updated_at) VALUES (@type, @content, @tags, @status, @created_at, @updated_at)"
+      "INSERT INTO notes (type, title, content, tags, status, created_at, updated_at) VALUES (@type, @title, @content, @tags, @status, @created_at, @updated_at)"
     );
     const info = stmt.run({
       type: payload.type,
-      content: payload.content,
+      title: title || null,
+      content,
       tags: payload.tags || null,
       status: payload.status || null,
       created_at: now,
@@ -351,6 +373,13 @@ function setupIpc() {
     const stmt = db.prepare("DELETE FROM notes WHERE id = ?");
     const info = stmt.run(payload.id);
     return { deleted: info.changes > 0 };
+  });
+
+  ipcMain.handle("note:update", (event, payload) => {
+    const now = new Date().toISOString();
+    const stmt = db.prepare("UPDATE notes SET title = ?, content = ?, updated_at = ? WHERE id = ?");
+    const info = stmt.run(payload.title || null, payload.content || "", now, payload.id);
+    return { updated: info.changes > 0 };
   });
 
   ipcMain.handle("note:updateStatus", (event, payload) => {

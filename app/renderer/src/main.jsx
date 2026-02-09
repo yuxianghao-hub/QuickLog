@@ -18,6 +18,9 @@ function App() {
   const [shortcut, setShortcut] = useState("Alt+Q");
   const [shortcutHint, setShortcutHint] = useState("");
   const [shortcutCapture, setShortcutCapture] = useState(false);
+  const [editingNote, setEditingNote] = useState(null);
+  const [editorTitle, setEditorTitle] = useState("");
+  const editorRef = React.useRef(null);
 
   const refresh = async () => {
     const data = await window.api.listNotes({ type, query, limit: 200 });
@@ -64,6 +67,68 @@ function App() {
     await refresh();
     await refreshStats();
   };
+
+  const stripHtml = (html) => {
+    if (!html) return "";
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return (div.textContent || div.innerText || "").trim();
+  };
+
+  const deriveTitle = (note) => {
+    if (note.title && note.title.trim()) return note.title.trim();
+    const plain = stripHtml(note.content || "");
+    if (!plain) return "（无标题）";
+    const firstLine = plain.split(/\r?\n/)[0].trim();
+    return firstLine || "（无标题）";
+  };
+
+  const normalizeContentHtml = (content) => {
+    if (!content) return "<p></p>";
+    if (content.includes("<") && content.includes(">")) return content;
+    const escaped = content
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br/>");
+    return `<p>${escaped}</p>`;
+  };
+
+  const openEditor = (note) => {
+    setEditingNote(note);
+    setEditorTitle(deriveTitle(note));
+    setTimeout(() => {
+      if (editorRef.current) editorRef.current.focus();
+    }, 0);
+  };
+
+  const closeEditor = () => {
+    setEditingNote(null);
+    setEditorTitle("");
+  };
+
+  const execCmd = (cmd, value = null) => {
+    try {
+      document.execCommand(cmd, false, value);
+    } catch (err) {
+      // ignore
+    }
+  };
+
+  const saveEditor = async () => {
+    if (!editingNote) return;
+    const title = editorTitle.trim();
+    const content = editorRef.current ? editorRef.current.innerHTML : "";
+    await window.api.updateNote({ id: editingNote.id, title, content });
+    await refresh();
+    await refreshStats();
+    closeEditor();
+  };
+
+  useEffect(() => {
+    if (!editingNote || !editorRef.current) return;
+    editorRef.current.innerHTML = normalizeContentHtml(editingNote.content || "");
+  }, [editingNote]);
 
   const todoRate = useMemo(() => {
     if (!stats) return "-";
@@ -221,18 +286,19 @@ function App() {
                       <span className="date-line" />
                     </div>
                   ) : null}
-                  <div className="card">
+                  <div className="card" onDoubleClick={() => openEditor(n)}>
                     <div className="card-head">
                       <span className={`tag tag-${n.type}`}>{n.type}</span>
                       <span className="time">{new Date(n.created_at).toLocaleString()}</span>
                     </div>
-                    <div className="card-body">{n.content}</div>
+                    <div className="card-body">{deriveTitle(n)}</div>
                     <div className="card-foot">
                       {n.type === "todo" ? (
                         <button className={`btn ${n.status === "done" ? "ghost" : ""}`} onClick={() => handleToggleDone(n)}>
                           {n.status === "done" ? "标记未完成" : "完成"}
                         </button>
                       ) : null}
+                      <button className="btn" onClick={() => openEditor(n)}>打开</button>
                       <button className="btn danger" onClick={() => handleDelete(n.id)}>删除</button>
                       {n.status ? <span className="status">状态: {n.status}</span> : null}
                     </div>
@@ -244,6 +310,53 @@ function App() {
           {notes.length === 0 ? <div className="empty">暂无记录</div> : null}
         </div>
       </main>
+
+      {editingNote ? (
+        <div className="editor-mask" onClick={closeEditor}>
+          <div className="editor" onClick={(e) => e.stopPropagation()}>
+            <div className="editor-head">
+              <input
+                className="editor-title"
+                value={editorTitle}
+                onChange={(e) => setEditorTitle(e.target.value)}
+                placeholder="标题"
+              />
+              <div className="editor-actions">
+                <button className="btn ghost" onClick={closeEditor}>取消</button>
+                <button className="btn" onClick={saveEditor}>保存</button>
+              </div>
+            </div>
+            <div className="editor-toolbar">
+              <button className="tool" onClick={() => execCmd("bold")}>B</button>
+              <button className="tool" onClick={() => execCmd("italic")}>I</button>
+              <button className="tool" onClick={() => execCmd("underline")}>U</button>
+              <button className="tool" onClick={() => execCmd("strikeThrough")}>S</button>
+              <span className="tool-sep" />
+              <button className="tool" onClick={() => execCmd("formatBlock", "h1")}>H1</button>
+              <button className="tool" onClick={() => execCmd("formatBlock", "h2")}>H2</button>
+              <button className="tool" onClick={() => execCmd("formatBlock", "blockquote")}>“</button>
+              <button className="tool" onClick={() => execCmd("insertUnorderedList")}>•</button>
+              <button className="tool" onClick={() => execCmd("insertOrderedList")}>1.</button>
+              <button
+                className="tool"
+                onClick={() => {
+                  const url = window.prompt("输入链接地址");
+                  if (url) execCmd("createLink", url);
+                }}
+              >
+                ↗
+              </button>
+              <button className="tool" onClick={() => execCmd("removeFormat")}>清除</button>
+            </div>
+            <div
+              className="editor-body"
+              contentEditable
+              ref={editorRef}
+            />
+            <div className="editor-foot">双击卡片或点击“打开”进入编辑</div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
