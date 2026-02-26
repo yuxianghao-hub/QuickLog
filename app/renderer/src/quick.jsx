@@ -47,23 +47,14 @@ function QuickInput() {
     if (e.key === "Escape") {
       window.api.hideQuick();
     }
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
       submit();
     }
     if (e.key === "Tab") {
       e.preventDefault();
       const idx = TYPES.findIndex((t) => t.id === type);
       const next = TYPES[(idx + 1) % TYPES.length].id;
-      setType(next);
-    }
-    if (e.key === "ArrowRight") {
-      const idx = TYPES.findIndex((t) => t.id === type);
-      const next = TYPES[(idx + 1) % TYPES.length].id;
-      setType(next);
-    }
-    if (e.key === "ArrowLeft") {
-      const idx = TYPES.findIndex((t) => t.id === type);
-      const next = TYPES[(idx - 1 + TYPES.length) % TYPES.length].id;
       setType(next);
     }
   };
@@ -82,16 +73,17 @@ function QuickInput() {
             </button>
           ))}
         </div>
-        <input
+        <textarea
           ref={inputRef}
           className="quick-input"
-          placeholder="输入后回车保存，Esc 关闭"
+          placeholder="支持换行输入；Ctrl/Cmd+Enter 保存，Esc 关闭"
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={onKeyDown}
+          rows={4}
         />
         <div className="quick-footer">
-          <span>Tab/←/→ 切换分类</span>
+          <span>Tab 切换分类，Ctrl/Cmd+Enter 保存</span>
         </div>
       </div>
     </div>

@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld("api", {
   updateStatus: (payload) => ipcRenderer.invoke("note:updateStatus", payload),
   getShortcut: () => ipcRenderer.invoke("settings:getShortcut"),
   setShortcut: (payload) => ipcRenderer.invoke("settings:setShortcut", payload),
+  getSettings: () => ipcRenderer.invoke("settings:getAll"),
+  updateSettings: (payload) => ipcRenderer.invoke("settings:update", payload),
+  generateReport: (payload) => ipcRenderer.invoke("report:generate", payload),
   hideQuick: () => ipcRenderer.invoke("quick:hide"),
   onQuickFocus: (handler) => ipcRenderer.on("quick:focus", handler),
   onMainRefresh: (handler) => ipcRenderer.on("main:refresh", handler)

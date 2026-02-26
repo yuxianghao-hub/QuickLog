@@ -4,7 +4,7 @@
   --text: #1f2524;
   --muted: #6f7a78;
   --border: #e6e6e2;
-  --font: "IBM Plex Sans", "Source Sans 3", system-ui, -apple-system, sans-serif;
+  --font: "IBM Plex Sans", "Source Sans 3", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, -apple-system, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -63,6 +63,10 @@ body {
   background: #ffffff;
   color: var(--text);
   outline: none;
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.5;
+  font-family: inherit;
 }
 
 .quick-input::placeholder { color: #9aa3a1; }

@@ -7,7 +7,22 @@ let mainWindow;
 let quickWindow;
 let tray;
 let db;
-let settings = { shortcut: "Alt+Q" };
+const defaultSettings = {
+  shortcut: "Alt+Q",
+  ai: {
+    provider: "qwen",
+    apiKey: "",
+    baseUrl: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
+    model: "qwen-plus"
+  },
+  prompts: {
+    day:
+      "你是工作日志助手。基于以下当天记录生成结构化日报，包含：今日完成、进行中、问题/风险、明日计划。要求简洁、要点列表。时间范围：{{from}} ~ {{to}}。\n记录如下：\n{{notes}}",
+    week:
+      "你是工作日志助手。基于以下一周记录生成结构化周报，包含：本周完成、进行中、问题/风险、下周计划。要求简洁、要点列表。时间范围：{{from}} ~ {{to}}。\n记录如下：\n{{notes}}"
+  }
+};
+let settings = { ...defaultSettings };
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -70,8 +85,13 @@ function loadSettings() {
   try {
     const raw = fs.readFileSync(getSettingsPath(), "utf8");
     const data = JSON.parse(raw);
-    if (data && typeof data.shortcut === "string" && data.shortcut.trim()) {
-      settings.shortcut = data.shortcut.trim();
+    if (data && typeof data === "object") {
+      settings = {
+        ...defaultSettings,
+        ...data,
+        ai: { ...defaultSettings.ai, ...(data.ai || {}) },
+        prompts: { ...defaultSettings.prompts, ...(data.prompts || {}) }
+      };
     }
   } catch (err) {
     // ignore, keep defaults
@@ -126,6 +146,7 @@ function createMainWindow() {
     height: 720,
     show: false,
     title: "QuickLog",
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true
@@ -139,6 +160,8 @@ function createMainWindow() {
   }
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.setMenuBarVisibility(false);
+  mainWindow.setMenu(null);
   mainWindow.on("close", (e) => {
     if (!app.isQuiting) {
       e.preventDefault();
@@ -156,7 +179,7 @@ function createMainWindow() {
 function createQuickWindow() {
   quickWindow = new BrowserWindow({
     width: 520,
-    height: 220,
+    height: 320,
     show: false,
     frame: false,
     alwaysOnTop: true,
@@ -268,6 +291,179 @@ function applyShortcut(accelerator) {
   }
   return { ok: false, error: "register_failed" };
 }
+
+function stripHtml(input) {
+  if (!input) return "";
+  return String(input)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+}
+
+function formatRangeDate(value) {
+  try {
+    return new Date(value).toLocaleString("zh-CN");
+  } catch (err) {
+    return String(value);
+  }
+}
+
+function buildPrompt(template, from, to, notesText) {
+  return template
+    .replace(/{{from}}/g, from)
+    .replace(/{{to}}/g, to)
+    .replace(/{{notes}}/g, notesText);
+}
+
+function toHtml(text) {
+  if (!text) return "<p></p>";
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<p>${escaped.replace(/\n/g, "<br/>")}</p>`;
+}
+
+async function callQwen({ apiKey, baseUrl, model, prompt }) {
+  if (!apiKey) return { ok: false, error: "missing_api_key" };
+  if (!globalThis.fetch) return { ok: false, error: "fetch_unavailable" };
+
+  const res = await fetch(baseUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model,
+      input: { prompt }
+    })
+  });
+
+  if (!res.ok) {
+    const raw = await res.text();
+    return { ok: false, error: "http_error", detail: raw };
+  }
+
+  const data = await res.json();
+  const text =
+    data?.output?.text ||
+    data?.output?.choices?.[0]?.message?.content ||
+    data?.output?.choices?.[0]?.text ||
+    data?.choices?.[0]?.message?.content ||
+    data?.choices?.[0]?.text ||
+    data?.result ||
+    "";
+  if (!text) return { ok: false, error: "empty_response", detail: data };
+  return { ok: true, text };
+}
+
+function normalizeRangeInput(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+async function generateReport(range, fromOverride, toOverride) {
+  const now = new Date();
+  let fromDate;
+  let toDate;
+
+  const fromIso = normalizeRangeInput(fromOverride);
+  const toIso = normalizeRangeInput(toOverride);
+
+  if (fromIso && toIso) {
+    fromDate = new Date(fromIso);
+    toDate = new Date(toIso);
+  } else {
+    fromDate = new Date(now);
+    toDate = new Date(now);
+    if (range === "day") {
+      fromDate.setDate(now.getDate() - 1);
+    } else {
+      fromDate.setDate(now.getDate() - 7);
+    }
+  }
+
+  const from = fromDate.toISOString();
+  const to = toDate.toISOString();
+
+  if (range === "week") {
+    const diffMs = Math.abs(toDate.getTime() - fromDate.getTime());
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    if (diffDays > 14) {
+      return { ok: false, error: "range_too_long" };
+    }
+  }
+
+  const rows = db
+    .prepare(
+      "SELECT type, title, content, created_at FROM notes WHERE created_at >= ? AND created_at <= ? AND type != 'report' ORDER BY datetime(created_at) ASC"
+    )
+    .all(from, to);
+
+  if (!rows.length) {
+    return { ok: false, error: "no_notes" };
+  }
+
+  const notesText = rows
+    .map((row) => {
+      const created = formatRangeDate(row.created_at);
+      const title = row.title && row.title.trim() ? row.title.trim() : "";
+      const content = stripHtml(row.content || "");
+      const short = content.length > 400 ? `${content.slice(0, 400)}...` : content;
+      return `- [${created}] [${row.type}] ${title}\n${short}`.trim();
+    })
+    .join("\n");
+
+  const promptTemplate =
+    range === "day" ? settings.prompts.day : settings.prompts.week;
+  const prompt = buildPrompt(
+    promptTemplate,
+    formatRangeDate(from),
+    formatRangeDate(to),
+    notesText
+  );
+
+  if (settings.ai.provider !== "qwen") {
+    return { ok: false, error: "unsupported_provider" };
+  }
+
+  const result = await callQwen({
+    apiKey: settings.ai.apiKey,
+    baseUrl: settings.ai.baseUrl,
+    model: settings.ai.model,
+    prompt
+  });
+
+  if (!result.ok) return result;
+
+  const title =
+    range === "day"
+      ? `日报 ${fromDate.toLocaleDateString("zh-CN")}`
+      : `周报 ${fromDate.toLocaleDateString("zh-CN")}~${toDate.toLocaleDateString("zh-CN")}`;
+  const content = toHtml(result.text.trim());
+  const stmt = db.prepare(
+    "INSERT INTO notes (type, title, content, tags, status, created_at, updated_at) VALUES (@type, @title, @content, @tags, @status, @created_at, @updated_at)"
+  );
+  const info = stmt.run({
+    type: "report",
+    title,
+    content,
+    tags: range,
+    status: null,
+    created_at: now.toISOString(),
+    updated_at: now.toISOString()
+  });
+
+  return { ok: true, id: info.lastInsertRowid, text: result.text };
+}
 function createTray() {
   const iconPath = path.join(__dirname, "..", "assets", "tray.png");
   tray = new Tray(iconPath);
@@ -377,8 +573,16 @@ function setupIpc() {
 
   ipcMain.handle("note:update", (event, payload) => {
     const now = new Date().toISOString();
-    const stmt = db.prepare("UPDATE notes SET title = ?, content = ?, updated_at = ? WHERE id = ?");
-    const info = stmt.run(payload.title || null, payload.content || "", now, payload.id);
+    const nextType = typeof payload.type === "string" && payload.type.trim() ? payload.type.trim() : null;
+    const current = db.prepare("SELECT created_at FROM notes WHERE id = ?").get(payload.id);
+    const createdAtRaw = typeof payload.created_at === "string" ? payload.created_at : "";
+    const createdAtDate = createdAtRaw ? new Date(createdAtRaw) : null;
+    const nextCreatedAt =
+      createdAtDate && !Number.isNaN(createdAtDate.getTime())
+        ? createdAtDate.toISOString()
+        : current?.created_at || now;
+    const stmt = db.prepare("UPDATE notes SET type = ?, title = ?, content = ?, created_at = ?, updated_at = ? WHERE id = ?");
+    const info = stmt.run(nextType, payload.title || null, payload.content || "", nextCreatedAt, now, payload.id);
     return { updated: info.changes > 0 };
   });
 
@@ -396,6 +600,36 @@ function setupIpc() {
   ipcMain.handle("settings:setShortcut", (event, payload) => {
     const next = payload?.shortcut || "";
     return applyShortcut(next);
+  });
+
+  ipcMain.handle("settings:getAll", () => {
+    return settings;
+  });
+
+  ipcMain.handle("settings:update", (event, payload) => {
+    if (!payload || typeof payload !== "object") return { ok: false };
+    settings = {
+      ...settings,
+      ...payload,
+      ai: { ...settings.ai, ...(payload.ai || {}) },
+      prompts: { ...settings.prompts, ...(payload.prompts || {}) }
+    };
+    if (!settings.ai.baseUrl) settings.ai.baseUrl = defaultSettings.ai.baseUrl;
+    if (!settings.ai.model) settings.ai.model = defaultSettings.ai.model;
+    if (!settings.prompts.day) settings.prompts.day = defaultSettings.prompts.day;
+    if (!settings.prompts.week) settings.prompts.week = defaultSettings.prompts.week;
+    saveSettings();
+    if (payload.shortcut) {
+      applyShortcut(payload.shortcut);
+    }
+    return { ok: true, settings };
+  });
+
+  ipcMain.handle("report:generate", async (event, payload) => {
+    const range = payload?.range === "day" ? "day" : "week";
+    const from = payload?.from || null;
+    const to = payload?.to || null;
+    return await generateReport(range, from, to);
   });
 
   ipcMain.handle("quick:hide", () => {
