@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("api", {
   getShortcut: () => ipcRenderer.invoke("settings:getShortcut"),
   setShortcut: (payload) => ipcRenderer.invoke("settings:setShortcut", payload),
   getSettings: () => ipcRenderer.invoke("settings:getAll"),
+  getDefaultSettings: () => ipcRenderer.invoke("settings:getDefaults"),
   updateSettings: (payload) => ipcRenderer.invoke("settings:update", payload),
   generateReport: (payload) => ipcRenderer.invoke("report:generate", payload),
   hideQuick: () => ipcRenderer.invoke("quick:hide"),

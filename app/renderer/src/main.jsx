@@ -17,6 +17,11 @@ const TYPE_LABELS = TYPES.reduce((acc, item) => {
   return acc;
 }, {});
 
+const DEFAULT_DAY_PROMPT =
+  "你是工作日志助手。基于以下当天记录生成结构化日报，包含：今日完成、进行中、问题/风险、明日计划。要求简洁、要点列表。时间范围：{{from}} ~ {{to}}。\n记录如下：\n{{notes}}";
+const DEFAULT_WEEK_PROMPT =
+  "你是工作日志助手。基于以下一周记录生成结构化周报，包含：本周完成、进行中、问题/风险、下周计划。要求简洁、要点列表。时间范围：{{from}} ~ {{to}}。\n记录如下：\n{{notes}}";
+
 function App() {
   const [type, setType] = useState("all");
   const [query, setQuery] = useState("");
@@ -152,7 +157,16 @@ function App() {
     setEditorTypeMenuOpen(false);
     setEditorCreatedAt(toDateTimeLocal(note.created_at));
     setTimeout(() => {
-      if (editorRef.current) editorRef.current.focus();
+      try {
+        const quill = editorRef.current?.getEditor?.();
+        if (quill) {
+          quill.focus();
+        } else if (editorRef.current?.focus) {
+          editorRef.current.focus();
+        }
+      } catch (error) {
+        console.warn("focus editor failed:", error);
+      }
     }, 0);
   };
 
@@ -300,20 +314,56 @@ function App() {
     }
     setReportError("");
     setReporting(reportType);
-    const res = await window.api.generateReport({ range: reportType, ...range });
-    if (res?.ok) {
-      await refresh();
-      setShowReportModal(false);
-    } else if (res?.error === "missing_api_key") {
-      window.alert("请先在设置中填写 Qwen API Key。");
-    } else if (res?.error === "no_notes") {
-      window.alert("当前区间没有可总结的记录。");
-    } else if (res?.error === "range_too_long") {
-      setReportError("周报日期范围不能超过 2 周。");
-    } else {
-      window.alert("总结失败，请检查设置或网络。");
+    try {
+      const res = await window.api.generateReport({ range: reportType, ...range });
+      if (res?.ok) {
+        await refresh();
+        setShowReportModal(false);
+      } else if (res?.error === "missing_api_key") {
+        window.alert("请先在设置中填写 Qwen API Key。");
+      } else if (res?.error === "no_notes") {
+        window.alert("当前区间没有可总结的记录。");
+      } else if (res?.error === "range_too_long") {
+        setReportError("周报日期范围不能超过 2 周。");
+      } else if (res?.error === "network_error") {
+        window.alert("网络请求失败，请检查网络连接、Base URL 与 API Key。");
+      } else {
+        window.alert("总结失败，请检查设置或网络。");
+      }
+    } catch (error) {
+      console.error("report generate invoke failed:", error);
+      window.alert("总结请求异常，请检查网络、模型配置或应用日志。");
+    } finally {
+      setReporting("");
     }
-    setReporting("");
+  };
+
+  const resetPromptToDefault = async (type) => {
+    setSettingsHint("");
+    try {
+      let defaults = null;
+      if (typeof window.api.getDefaultSettings === "function") {
+        defaults = await window.api.getDefaultSettings();
+      }
+      const defaultDay = defaults?.prompts?.day || DEFAULT_DAY_PROMPT;
+      const defaultWeek = defaults?.prompts?.week || DEFAULT_WEEK_PROMPT;
+      if (type === "day") {
+        setPromptDay(defaultDay);
+        setSettingsHint("已恢复默认日报 Prompt（点击“保存设置”生效）");
+      } else {
+        setPromptWeek(defaultWeek);
+        setSettingsHint("已恢复默认周报 Prompt（点击“保存设置”生效）");
+      }
+    } catch (error) {
+      console.error("load default prompts failed:", error);
+      if (type === "day") {
+        setPromptDay(DEFAULT_DAY_PROMPT);
+        setSettingsHint("已使用内置默认日报 Prompt（点击“保存设置”生效）");
+      } else {
+        setPromptWeek(DEFAULT_WEEK_PROMPT);
+        setSettingsHint("已使用内置默认周报 Prompt（点击“保存设置”生效）");
+      }
+    }
   };
 
   const normalizeKey = (event) => {
@@ -386,7 +436,7 @@ function App() {
           {TYPES.map((t) => (
             <button
               key={t.id}
-              className={`nav-btn ${type === t.id ? "active" : ""}`}
+              className={`nav-btn nav-${t.id} ${type === t.id ? "active" : ""}`}
               onClick={() => setType(t.id)}
             >
               {t.label}
@@ -440,7 +490,7 @@ function App() {
                         <span className="date-line" />
                       </div>
                     ) : null}
-                    <div className="card" onDoubleClick={() => openEditor(n)}>
+                    <div className={`card card-${n.type}`} onDoubleClick={() => openEditor(n)}>
                       <div className="card-head">
                         <span className={`tag tag-${n.type}`}>{getTagLabel(n)}</span>
                         <span className="time">{new Date(n.created_at).toLocaleString()}</span>
@@ -613,6 +663,9 @@ function App() {
                     </div>
                     <div className="settings-item">
                       <div className="settings-label">日报 Prompt</div>
+                      <div className="settings-inline-actions">
+                        <button className="btn ghost" onClick={() => resetPromptToDefault("day")}>恢复默认日报 Prompt</button>
+                      </div>
                       <textarea
                         className="settings-textarea"
                         rows={5}
@@ -623,6 +676,9 @@ function App() {
                     </div>
                     <div className="settings-item">
                       <div className="settings-label">周报 Prompt</div>
+                      <div className="settings-inline-actions">
+                        <button className="btn ghost" onClick={() => resetPromptToDefault("week")}>恢复默认周报 Prompt</button>
+                      </div>
                       <textarea
                         className="settings-textarea"
                         rows={5}

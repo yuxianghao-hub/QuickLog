@@ -44,12 +44,28 @@ function QuickInput() {
   };
 
   const onKeyDown = (e) => {
+    if (e.isComposing) return;
     if (e.key === "Escape") {
       window.api.hideQuick();
+    }
+    if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      const target = e.target;
+      const start = typeof target.selectionStart === "number" ? target.selectionStart : content.length;
+      const end = typeof target.selectionEnd === "number" ? target.selectionEnd : content.length;
+      const next = `${content.slice(0, start)}\n${content.slice(end)}`;
+      setContent(next);
+      setTimeout(() => {
+        if (!inputRef.current) return;
+        inputRef.current.selectionStart = start + 1;
+        inputRef.current.selectionEnd = start + 1;
+      }, 0);
+      return;
     }
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       submit();
+      return;
     }
     if (e.key === "Tab") {
       e.preventDefault();

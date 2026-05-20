@@ -77,9 +77,15 @@ body {
   cursor: pointer;
 }
 
+.nav-all { background: var(--panel); }
+.nav-worklog { background: #eef7f4; }
+.nav-todo { background: #fff8e8; }
+.nav-idea { background: #f4efff; }
+.nav-report { background: #ebf3ff; }
+
 .nav-btn.active {
   border-color: var(--accent);
-  background: #eef7f4;
+  box-shadow: inset 0 0 0 1px rgba(47, 125, 109, 0.15);
   color: #1f2524;
 }
 
@@ -209,6 +215,11 @@ body {
   cursor: default;
 }
 
+.card-worklog { background: #eef7f4; }
+.card-todo { background: #fff8e8; }
+.card-idea { background: #f4efff; }
+.card-report { background: #ebf3ff; }
+
 .card:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 26px rgba(20, 23, 25, 0.12);
@@ -279,10 +290,11 @@ body {
   background: rgba(15, 18, 20, 0.35);
   backdrop-filter: blur(6px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 24px;
-  z-index: 20;
+  z-index: 60;
+  overflow-y: auto;
 }
 
 .editor {
@@ -294,6 +306,9 @@ body {
   box-shadow: 0 24px 60px rgba(16, 19, 22, 0.25);
   display: flex;
   flex-direction: column;
+  margin: auto 0;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .editor-head {
@@ -423,6 +438,9 @@ body {
 .editor-toolbar {
   border-bottom: 1px solid var(--border);
   background: #f6f7f5;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 .editor-toolbar .ql-toolbar.ql-snow {
@@ -438,10 +456,17 @@ body {
   font-size: 15px;
   line-height: 1.7;
   background: #fff;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: auto;
 }
 
 .editor-toolbar .ql-editor {
   padding: 16px 18px 24px;
+  pointer-events: auto;
+  min-height: 280px;
 }
 
 .editor-toolbar .ql-editor h1 { font-size: 22px; margin: 12px 0; }
@@ -601,6 +626,13 @@ body {
   color: var(--text);
   resize: vertical;
   min-height: 110px;
+}
+
+.settings-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .settings-actions {

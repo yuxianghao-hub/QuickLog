@@ -332,35 +332,42 @@ function toHtml(text) {
 async function callQwen({ apiKey, baseUrl, model, prompt }) {
   if (!apiKey) return { ok: false, error: "missing_api_key" };
   if (!globalThis.fetch) return { ok: false, error: "fetch_unavailable" };
+  try {
+    const res = await fetch(baseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        input: { prompt }
+      })
+    });
 
-  const res = await fetch(baseUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model,
-      input: { prompt }
-    })
-  });
+    if (!res.ok) {
+      const raw = await res.text();
+      return { ok: false, error: "http_error", detail: raw };
+    }
 
-  if (!res.ok) {
-    const raw = await res.text();
-    return { ok: false, error: "http_error", detail: raw };
+    const data = await res.json();
+    const text =
+      data?.output?.text ||
+      data?.output?.choices?.[0]?.message?.content ||
+      data?.output?.choices?.[0]?.text ||
+      data?.choices?.[0]?.message?.content ||
+      data?.choices?.[0]?.text ||
+      data?.result ||
+      "";
+    if (!text) return { ok: false, error: "empty_response", detail: data };
+    return { ok: true, text };
+  } catch (err) {
+    return {
+      ok: false,
+      error: "network_error",
+      detail: err && err.message ? err.message : String(err)
+    };
   }
-
-  const data = await res.json();
-  const text =
-    data?.output?.text ||
-    data?.output?.choices?.[0]?.message?.content ||
-    data?.output?.choices?.[0]?.text ||
-    data?.choices?.[0]?.message?.content ||
-    data?.choices?.[0]?.text ||
-    data?.result ||
-    "";
-  if (!text) return { ok: false, error: "empty_response", detail: data };
-  return { ok: true, text };
 }
 
 function normalizeRangeInput(value) {
@@ -604,6 +611,9 @@ function setupIpc() {
 
   ipcMain.handle("settings:getAll", () => {
     return settings;
+  });
+  ipcMain.handle("settings:getDefaults", () => {
+    return defaultSettings;
   });
 
   ipcMain.handle("settings:update", (event, payload) => {
