@@ -44,7 +44,7 @@ function App() {
   const [reportStart, setReportStart] = useState("");
   const [reportEnd, setReportEnd] = useState("");
   const [reportError, setReportError] = useState("");
-  const [aiProvider, setAiProvider] = useState("qwen");
+  const [aiProvider, setAiProvider] = useState("openai");
   const [aiApiKey, setAiApiKey] = useState("");
   const [aiBaseUrl, setAiBaseUrl] = useState("");
   const [aiModel, setAiModel] = useState("");
@@ -79,7 +79,7 @@ function App() {
     window.api.getSettings().then((res) => {
       if (!res) return;
       if (res.ai) {
-        setAiProvider(res.ai.provider || "qwen");
+        setAiProvider(res.ai.provider || "openai");
         setAiApiKey(res.ai.apiKey || "");
         setAiBaseUrl(res.ai.baseUrl || "");
         setAiModel(res.ai.model || "");
@@ -320,15 +320,19 @@ function App() {
         await refresh();
         setShowReportModal(false);
       } else if (res?.error === "missing_api_key") {
-        window.alert("请先在设置中填写 Qwen API Key。");
+        window.alert("请先在设置中填写 API Key。");
       } else if (res?.error === "no_notes") {
         window.alert("当前区间没有可总结的记录。");
       } else if (res?.error === "range_too_long") {
         setReportError("周报日期范围不能超过 2 周。");
       } else if (res?.error === "network_error") {
-        window.alert("网络请求失败，请检查网络连接、Base URL 与 API Key。");
+        window.alert(`网络请求失败：${res.detail || "请检查网络连接、Base URL 与 API Key。"}`);
+      } else if (res?.error === "http_error") {
+        window.alert(`API 请求失败：${res.detail || "请检查 Base URL、API Key 和 Model 配置。"}`);
+      } else if (res?.error === "empty_response") {
+        window.alert(`API 返回为空：${JSON.stringify(res.detail || "").slice(0, 500)}`);
       } else {
-        window.alert("总结失败，请检查设置或网络。");
+        window.alert(`总结失败：${res?.error || "未知错误"}`);
       }
     } catch (error) {
       console.error("report generate invoke failed:", error);
@@ -626,12 +630,23 @@ function App() {
                 ) : (
                   <>
                     <div className="settings-item">
-                      <div className="settings-label">AI 模型（当前仅支持 Qwen）</div>
+                      <div className="settings-label">AI 模型</div>
                       <div className="settings-grid">
                         <div className="settings-field">
                           <label>Provider</label>
-                          <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)}>
-                            <option value="qwen">qwen</option>
+                          <select value={aiProvider} onChange={(e) => {
+                            const p = e.target.value;
+                            setAiProvider(p);
+                            if (p === "openai") {
+                              setAiBaseUrl("https://api.openai.com/v1");
+                              setAiModel("gpt-4o-mini");
+                            } else if (p === "anthropic") {
+                              setAiBaseUrl("https://api.anthropic.com");
+                              setAiModel("claude-sonnet-4-20250514");
+                            }
+                          }}>
+                            <option value="openai">OpenAI</option>
+                            <option value="anthropic">Anthropic</option>
                           </select>
                         </div>
                         <div className="settings-field">
@@ -640,7 +655,7 @@ function App() {
                             type="password"
                             value={aiApiKey}
                             onChange={(e) => setAiApiKey(e.target.value)}
-                            placeholder="填写 Qwen API Key"
+                            placeholder={aiProvider === "anthropic" ? "sk-ant-..." : "sk-..."}
                           />
                         </div>
                         <div className="settings-field">
@@ -648,7 +663,7 @@ function App() {
                           <input
                             value={aiBaseUrl}
                             onChange={(e) => setAiBaseUrl(e.target.value)}
-                            placeholder="https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+                            placeholder={aiProvider === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com/v1"}
                           />
                         </div>
                         <div className="settings-field">
@@ -656,7 +671,7 @@ function App() {
                           <input
                             value={aiModel}
                             onChange={(e) => setAiModel(e.target.value)}
-                            placeholder="qwen-plus"
+                            placeholder={aiProvider === "anthropic" ? "claude-sonnet-4-20250514" : "gpt-4o-mini"}
                           />
                         </div>
                       </div>

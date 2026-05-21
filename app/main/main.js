@@ -10,10 +10,10 @@ let db;
 const defaultSettings = {
   shortcut: "Alt+Q",
   ai: {
-    provider: "qwen",
+    provider: "openai",
     apiKey: "",
-    baseUrl: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
-    model: "qwen-plus"
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4o-mini"
   },
   prompts: {
     day:
@@ -329,39 +329,83 @@ function toHtml(text) {
   return `<p>${escaped.replace(/\n/g, "<br/>")}</p>`;
 }
 
-async function callQwen({ apiKey, baseUrl, model, prompt }) {
+async function callOpenAI({ apiKey, baseUrl, model, prompt }) {
+  const url = baseUrl.replace(/\/+$/, "") + "/chat/completions";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }]
+    })
+  });
+  const contentType = res.headers.get("content-type") || "";
+  if (!res.ok) {
+    const raw = await res.text();
+    return { ok: false, error: "http_error", detail: raw.slice(0, 500) };
+  }
+  if (!contentType.includes("json")) {
+    const raw = await res.text();
+    return { ok: false, error: "http_error", detail: `期望 JSON 但收到 ${contentType}，请检查 Base URL 是否正确。响应前 200 字符: ${raw.slice(0, 200)}` };
+  }
+  const data = await res.json();
+  const text = data?.choices?.[0]?.message?.content || "";
+  if (!text) return { ok: false, error: "empty_response", detail: data };
+  return { ok: true, text };
+}
+
+async function callAnthropic({ apiKey, baseUrl, model, prompt }) {
+  const url = baseUrl.replace(/\/+$/, "") + "/v1/messages";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 4096,
+      messages: [{ role: "user", content: prompt }]
+    })
+  });
+  const contentType = res.headers.get("content-type") || "";
+  if (!res.ok) {
+    const raw = await res.text();
+    return { ok: false, error: "http_error", detail: raw.slice(0, 500) };
+  }
+  if (!contentType.includes("json")) {
+    const raw = await res.text();
+    return { ok: false, error: "http_error", detail: `期望 JSON 但收到 ${contentType}，请检查 Base URL 是否正确。响应前 200 字符: ${raw.slice(0, 200)}` };
+  }
+  const data = await res.json();
+  const text = data?.content?.[0]?.text || "";
+  if (!text) return { ok: false, error: "empty_response", detail: data };
+  return { ok: true, text };
+}
+
+async function callAI({ provider, apiKey, baseUrl, model, prompt }) {
   if (!apiKey) return { ok: false, error: "missing_api_key" };
   if (!globalThis.fetch) return { ok: false, error: "fetch_unavailable" };
+  console.log(`callAI: provider=${provider}, baseUrl=${baseUrl}, model=${model}`);
   try {
-    const res = await fetch(baseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model,
-        input: { prompt }
-      })
-    });
-
-    if (!res.ok) {
-      const raw = await res.text();
-      return { ok: false, error: "http_error", detail: raw };
+    let result;
+    if (provider === "anthropic") {
+      result = await callAnthropic({ apiKey, baseUrl, model, prompt });
+    } else {
+      result = await callOpenAI({ apiKey, baseUrl, model, prompt });
     }
-
-    const data = await res.json();
-    const text =
-      data?.output?.text ||
-      data?.output?.choices?.[0]?.message?.content ||
-      data?.output?.choices?.[0]?.text ||
-      data?.choices?.[0]?.message?.content ||
-      data?.choices?.[0]?.text ||
-      data?.result ||
-      "";
-    if (!text) return { ok: false, error: "empty_response", detail: data };
-    return { ok: true, text };
+    if (!result.ok) {
+      console.error(`callAI failed: ${result.error}`, result.detail || "");
+    } else {
+      console.log("callAI succeeded, response length:", result.text.length);
+    }
+    return result;
   } catch (err) {
+    console.error("callAI exception:", err);
     return {
       ok: false,
       error: "network_error",
@@ -438,11 +482,8 @@ async function generateReport(range, fromOverride, toOverride) {
     notesText
   );
 
-  if (settings.ai.provider !== "qwen") {
-    return { ok: false, error: "unsupported_provider" };
-  }
-
-  const result = await callQwen({
+  const result = await callAI({
+    provider: settings.ai.provider,
     apiKey: settings.ai.apiKey,
     baseUrl: settings.ai.baseUrl,
     model: settings.ai.model,
@@ -659,7 +700,11 @@ app.whenReady().then(() => {
   setupIpc();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+    ensureMainWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
 });
 

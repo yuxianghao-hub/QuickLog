@@ -54,7 +54,13 @@
       "createStartMenuShortcut": true
     },
     "mac": {
-      "icon": "app/assets/tray.png"
+      "icon": "app/assets/tray.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        }
+      ]
     },
     "linux": {
       "icon": "app/assets/tray.png"
